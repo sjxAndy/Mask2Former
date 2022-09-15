@@ -449,14 +449,17 @@ class MultiScaleMaskedTransformerDecoder(nn.Module):
                 if i != self.insert_idx[0]:
                     old_output = output[ :len(output)//2, :, :]
                     output = output[len(output)//2:, :, :]
-                output = self.bf[i](output)
+                output = self.bf[i](output, src[level_index])
                 if self.training:
                     output = torch.cat([old_output, output], dim=0)
                 if i == self.insert_idx[0] and self.training:
-                    mask_features = torch.cat([mask_features, mask_features], dim=0)
-                #     pos = torch.cat([pos, pos], dim=0)
-                #     reference_points = torch.cat([reference_points, reference_points], dim=0)
-                #     padding_mask = torch.cat([padding_mask, padding_mask], dim=0)
+                    # mask_features = torch.cat([mask_features, mask_features], dim=0)
+                    query_embed = torch.cat([query_embed, query_embed], dim=0)
+                    # print('output:', output.shape)
+                    # print('src:', src[0].shape)
+                    # print('attn:', attn_mask.shape)
+                    # print('pos:', pos[0].shape)
+                    # print('query embed:', query_embed.shape)
 
             outputs_class, outputs_mask, attn_mask = self.forward_prediction_heads(output, mask_features, attn_mask_target_size=size_list[(i + 1) % self.num_feature_levels])
             predictions_class.append(outputs_class)
