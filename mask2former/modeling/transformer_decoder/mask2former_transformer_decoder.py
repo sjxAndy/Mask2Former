@@ -247,6 +247,11 @@ class MultiScaleMaskedTransformerDecoder(nn.Module):
         pre_norm: bool,
         mask_dim: int,
         enforce_input_project: bool,
+        share_bf: int=0,
+        bf: int=1,
+        insert_idx: list=[0],
+        bt_num_layers: int=1,
+        eval_bf: bool=False,
     ):
         """
         NOTE: this interface is experimental.
@@ -308,7 +313,25 @@ class MultiScaleMaskedTransformerDecoder(nn.Module):
                     normalize_before=pre_norm,
                 )
             )
-
+        # BatchFormer
+        self.bf = None
+        self.insert_idx = insert_idx
+        self.eval_bf = eval_bf
+        insert_idx = []
+        if bf:
+            def generate_bf(num):
+                if num == 1:
+                    decoder = torch.nn.TransformerDecoderLayer(hidden_dim, 4, hidden_dim, dropout=0.5)
+                elif num >= 2:
+                    decoder = torch.nn.TransformerDecoder(torch.nn.TransformerDecoderLayer(hidden_dim, 4, hidden_dim, dropout=0.5), num)
+                else:
+                    decoder = torch.nn.TransformerDecoderLayer(hidden_dim, 4, hidden_dim, dropout=0.5)
+                return decoder
+            self.bf = generate_bf(bt_num_layers)
+            insert_idx = self.insert_idx
+            if not share_bf:
+                self.bf = torch.nn.ModuleList([generate_bf(bt_num_layers) if i in insert_idx else torch.nn.Identity() for i in range(0, self.num_layers)])
+        
         self.decoder_norm = nn.LayerNorm(hidden_dim)
 
         self.num_queries = num_queries
@@ -357,6 +380,13 @@ class MultiScaleMaskedTransformerDecoder(nn.Module):
         ret["enforce_input_project"] = cfg.MODEL.MASK_FORMER.ENFORCE_INPUT_PROJ
 
         ret["mask_dim"] = cfg.MODEL.SEM_SEG_HEAD.MASK_DIM
+
+        #BatchFormer
+        ret["share_bf"] = cfg.MODEL.MASK_FORMER.SHARE_BF
+        ret["bf"] = cfg.MODEL.MASK_FORMER.BF
+        ret["insert_idx"] = cfg.MODEL.MASK_FORMER.INSERT_IDX
+        ret["bt_num_layers"] = cfg.MODEL.MASK_FORMER.BT_NUM_LAYERS
+        ret["eval_bf"] = cfg.MODEL.MASK_FORMER.EVAL_BF
 
         return ret
 
@@ -414,6 +444,19 @@ class MultiScaleMaskedTransformerDecoder(nn.Module):
             output = self.transformer_ffn_layers[i](
                 output
             )
+            if i in self.insert_idx and self.bf is not None and (self.training or self.eval_bf):
+                old_output = output
+                if i != self.insert_idx[0]:
+                    old_output = output[ :len(output)//2, :, :]
+                    output = output[len(output)//2:, :, :]
+                output = self.bf[i](output)
+                if self.training:
+                    output = torch.cat([old_output, output], dim=0)
+                if i == self.insert_idx[0] and self.training:
+                    mask_features = torch.cat([mask_features, mask_features], dim=0)
+                #     pos = torch.cat([pos, pos], dim=0)
+                #     reference_points = torch.cat([reference_points, reference_points], dim=0)
+                #     padding_mask = torch.cat([padding_mask, padding_mask], dim=0)
 
             outputs_class, outputs_mask, attn_mask = self.forward_prediction_heads(output, mask_features, attn_mask_target_size=size_list[(i + 1) % self.num_feature_levels])
             predictions_class.append(outputs_class)

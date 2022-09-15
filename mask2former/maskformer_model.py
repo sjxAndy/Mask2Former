@@ -205,6 +205,9 @@ class MaskFormer(nn.Module):
             else:
                 targets = None
 
+            # BatchFormer
+            if len(outputs['pred_logits']) > len(targets):
+                targets = targets + targets
             # bipartite matching-based loss
             losses = self.criterion(outputs, targets)
 

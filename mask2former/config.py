@@ -93,6 +93,13 @@ def add_maskformer2_config(cfg):
     # transformer module
     cfg.MODEL.MASK_FORMER.TRANSFORMER_DECODER_NAME = "MultiScaleMaskedTransformerDecoder"
 
+    # BatchFormer
+    cfg.MODEL.MASK_FORMER.SHARE_BF = 0
+    cfg.MODEL.MASK_FORMER.BF = 1
+    cfg.MODEL.MASK_FORMER.INSERT_IDX = [0]
+    cfg.MODEL.MASK_FORMER.BT_NUM_LAYERS = 1
+    cfg.MODEL.MASK_FORMER.EVAL_BF = False
+
     # LSJ aug
     cfg.INPUT.IMAGE_SIZE = 1024
     cfg.INPUT.MIN_SCALE = 0.1
